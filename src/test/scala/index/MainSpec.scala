@@ -44,7 +44,7 @@ class MainSpec extends FlatSpec {
       val old = root.get()
       val index = new Index[String, Int, Int](old)
 
-      val n = 4//rand.nextInt(1, 100)
+      val n = rand.nextInt(1, 100)
 
       var list = Seq.empty[(Int, Int)]
 
@@ -57,15 +57,18 @@ class MainSpec extends FlatSpec {
       }
 
       index.insert(list).flatMap { case (ok, _) =>
-        if(ok && root.compareAndSet(old, index.ref)) {
-          store.save(ctx.blocks).map(_ -> list)
+
+        if(!ok){
+          Future.successful(false -> null)
         } else {
-          Future.successful(false -> Seq.empty[(Int, Int)])
+          store.save(ctx.blocks).map { ok =>
+            (ok && root.compareAndSet(old, index.ref)) -> list
+          }
         }
       }
     }
 
-    val n = 4//rand.nextInt(1, 100)
+    val n = rand.nextInt(4, 10)
 
     var tasks = Seq.empty[Future[(Boolean, Seq[(Int, Int)])]]
 

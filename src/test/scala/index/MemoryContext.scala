@@ -21,13 +21,17 @@ class MemoryContext[T: ClassTag, K: ClassTag, V: ClassTag](val DATA_ORDER: Int,
 
   override def createPartition(): Partition[T, K, V] = {
     val p = new DataBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], DATA_MIN, DATA_MAX)
+
     blocks.put(p.id, p)
+
     p
   }
 
   override def createMeta(): MetaBlock[T, K, V] = {
     val m = new MetaBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], META_MIN, META_MAX)
+
     blocks.put(m.id, m)
+
     m
   }
 
@@ -47,7 +51,7 @@ class MemoryContext[T: ClassTag, K: ClassTag, V: ClassTag](val DATA_ORDER: Int,
   }
 
   override def copy(p: Partition[T, K, V]): Partition[T, K, V] = {
-    //if(blocks.isDefinedAt(p.id)) return p
+    if(blocks.isDefinedAt(p.id)) return p
 
     val block = p.asInstanceOf[DataBlock[T, K, V]]
     val copy = createPartition().asInstanceOf[DataBlock[T, K, V]]
@@ -64,7 +68,7 @@ class MemoryContext[T: ClassTag, K: ClassTag, V: ClassTag](val DATA_ORDER: Int,
   }
 
   override def copy(m: MetaBlock[T, K, V]): MetaBlock[T, K, V] = {
-    //if(blocks.isDefinedAt(m.id)) return m
+    if(blocks.isDefinedAt(m.id)) return m
 
     val copy = createMeta()
 

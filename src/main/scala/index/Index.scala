@@ -57,7 +57,11 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
       case None => Future.successful(None)
       case Some(id) => ctx.getBlock(id).flatMap { opt =>
         opt match {
-          case None => Future.successful(None)
+          case None =>
+
+            println(s"something went horribly wrong!\n\n")
+
+            Future.successful(None)
           case Some(start) => start match {
             case leaf: Partition[T, K, V] => Future.successful(Some(leaf))
             case meta: MetaBlock[T, K, V] =>
