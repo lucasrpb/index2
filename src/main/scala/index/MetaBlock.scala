@@ -10,7 +10,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
   val MIDDLE = MIN
 
   var size = 0
-  val pointers = Array.ofDim[(K, Block[T, K, V])](MAX)
+  val pointers = Array.ofDim[(K, T)](MAX)
 
   def find(k: K, start: Int, end: Int): (Boolean, Int) = {
     if(start > end) return false -> start
@@ -24,17 +24,17 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     find(k, pos + 1, end)
   }
 
-  def findPath(k: K): Option[Block[T, K, V]] = {
+  def findPath(k: K): Option[T] = {
     if(isEmpty()) return None
     val (_, pos) = find(k, 0, size - 1)
 
     Some(pointers(if(pos < size) pos else pos - 1)._2)
   }
 
-  def setChild(k: K, child: Block[T, K, V], pos: Int)(implicit ctx: TxContext[T, K, V]): Boolean = {
+  def setChild(k: K, child: T, pos: Int)(implicit ctx: TxContext[T, K, V]): Boolean = {
     pointers(pos) = k -> child
 
-    ctx.parents += child -> (Some(this), pos)
+    ctx.parents += child -> (Some(id), pos)
 
     true
   }
@@ -51,7 +51,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     Some(pointers(rpos)._2.asInstanceOf[S])
   }
 
-  def insertAt(k: K, child: Block[T, K, V], idx: Int)(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
+  def insertAt(k: K, child: T, idx: Int)(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
     for(i<-size until idx by -1){
       val (k, child) = pointers(i - 1)
       setChild(k, child, i)
@@ -64,7 +64,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     true -> idx
   }
 
-  def insert(k: K, child: Block[T, K, V])(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
+  def insert(k: K, child: T)(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
     if(isFull()) return false -> 0
 
     val (found, idx) = find(k, 0, size - 1)
@@ -74,7 +74,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     insertAt(k, child, idx)
   }
 
-  def insert(data: Seq[(K, Block[T, K, V])])(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
+  def insert(data: Seq[(K, T)])(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
     if(isFull()) return false -> 0
 
     val len = Math.min(MAX - size, data.length)
@@ -87,7 +87,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     true -> len
   }
 
-  def removeAt(idx: Int)(implicit ctx: TxContext[T, K, V]): (K, Block[T, K, V]) = {
+  def removeAt(idx: Int)(implicit ctx: TxContext[T, K, V]): (K, T) = {
     val data = pointers(idx)
 
     size -= 1
@@ -124,7 +124,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     true -> len
   }
 
-  def update(data: Seq[(K, Block[T, K, V])])(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
+  def update(data: Seq[(K, T)])(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
 
     val len = data.length
 
@@ -141,7 +141,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     true -> len
   }
 
-  def split()(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
+  /*def split()(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
     val right = new MetaBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], MIN, MAX)
 
     val len = size
@@ -156,9 +156,9 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     }
 
     right
-  }
+  }*/
 
-  def copy()(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
+  /*def copy()(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
 
     if(ctx.blocks.isDefinedAt(this)) return this
 
@@ -175,7 +175,7 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     }
 
     copy
-  }
+  }*/
 
   override def max: Option[K] = {
     if(isEmpty()) return None
@@ -187,8 +187,8 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
   override def hasMinimumKeys(): Boolean = size >= MIN
   override def hasEnoughKeys(): Boolean = size > MIN
 
-  def inOrder(): Seq[(K, Block[T, K, V])] = {
-    if(isEmpty()) return Seq.empty[(K, Block[T, K, V])]
+  def inOrder(): Seq[(K, T)] = {
+    if(isEmpty()) return Seq.empty[(K, T)]
     pointers.slice(0, size)
   }
 

@@ -131,7 +131,7 @@ class DataBlock[T: ClassTag, K: ClassTag, V: ClassTag](override val id: T,
     true -> len
   }
 
-  override def split(): DataBlock[T, K, V] = {
+  /*override def split(): DataBlock[T, K, V] = {
     val right = new DataBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], MIN, MAX)
 
     val len = size
@@ -145,9 +145,9 @@ class DataBlock[T: ClassTag, K: ClassTag, V: ClassTag](override val id: T,
     }
 
     right
-  }
+  }*/
 
-  override def copy(): DataBlock[T, K, V] = {
+  /*override def copy(): DataBlock[T, K, V] = {
     val copy = new DataBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], MIN, MAX)
 
     copy.size = size
@@ -157,7 +157,7 @@ class DataBlock[T: ClassTag, K: ClassTag, V: ClassTag](override val id: T,
     }
 
     copy
-  }
+  }*/
 
   override def max: Option[K] = {
     if(isEmpty()) return None

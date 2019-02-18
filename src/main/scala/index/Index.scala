@@ -1,26 +1,18 @@
 package index
 
 import java.util.UUID
+
+import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
-class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V],
-                                                   val DATA_ORDER: Int,
-                                                   val META_ORDER: Int)(implicit ord: Ordering[K]){
-
-  assert(DATA_ORDER > 2 && META_ORDER > 2, "DATA_ORDER and META_ORDER must be greater than 2!")
+class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
+                                                  (implicit val ec: ExecutionContext,
+                                                   ord: Ordering[K], ctx: TxContext[T, K, V]){
 
   val id = UUID.randomUUID.toString.asInstanceOf[T]
 
-  val DATA_MIN = DATA_ORDER - 1
-  val DATA_MAX = DATA_ORDER*2 - 1
-
-  val META_MIN = META_ORDER - 1
-  val META_MAX = META_ORDER*2 - 1
-
   var root = iref.root
   var size = iref.size
-
-  implicit val ctx = new TxContext[T, K, V]()
 
   def ref: IndexRef[T, K, V] = IndexRef(id, root, size)
 
@@ -32,157 +24,187 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V],
           root = Some(p.pointers(0)._2)
           true
         } else {
-          root = Some(p)
+          root = Some(p.id)
           true
         }
 
       case p: Partition[T, K, V] =>
-        root = Some(p)
+        root = Some(p.id)
         true
     }
   }
 
-  def recursiveCopy(p: Block[T, K, V]): Boolean = {
-    val (parent, pos) = ctx.parents(p)
+  def recursiveCopy(p: Block[T, K, V]): Future[Boolean] = {
+    val (parent, pos) = ctx.parents(p.id)
 
     parent match {
-      case None => fixRoot(p)
-      case Some(parent) =>
-        val PARENT = parent.copy()
-        PARENT.setChild(p.max.get, p, pos)
-        recursiveCopy(PARENT)
+      case None => Future.successful(fixRoot(p))
+      case Some(id) => ctx.getMeta(id).flatMap { opt =>
+        opt match {
+          case None => Future.successful(false)
+          case Some(parent) =>
 
-    }
-  }
-
-  def find(k: K, start: Option[Block[T, K, V]]): Option[Partition[T, K, V]] = {
-    start match {
-      case None => None
-      case Some(start) => start match {
-        case leaf: DataBlock[T, K, V] => Some(leaf)
-        case meta: MetaBlock[T, K, V] =>
-
-          val size = meta.size
-          val pointers = meta.pointers
-
-          for(i<-0 until size){
-            val child = pointers(i)._2
-            ctx.parents += child -> (Some(meta), i)
-          }
-
-          find(k, meta.findPath(k))
+            val PARENT = ctx.copy(parent)
+            PARENT.setChild(p.max.get, p.id, pos)
+            recursiveCopy(PARENT)
+        }
       }
     }
   }
 
-  def find(k: K): Option[Partition[T, K, V]] = {
-    if(root.isDefined){
-      ctx.parents += root.get -> (None, 0)
-    }
+  def find(k: K, start: Option[T]): Future[Option[Partition[T, K, V]]] = {
+    start match {
+      case None => Future.successful(None)
+      case Some(id) => ctx.getBlock(id).flatMap { opt =>
+        opt match {
+          case None => Future.successful(None)
+          case Some(start) => start match {
+            case leaf: Partition[T, K, V] => Future.successful(Some(leaf))
+            case meta: MetaBlock[T, K, V] =>
 
-    find(k, root)
+              val size = meta.size
+              val pointers = meta.pointers
+
+              for(i<-0 until size){
+                val child = pointers(i)._2
+                ctx.parents += child -> (Some(meta.id), i)
+              }
+
+              find(k, meta.findPath(k))
+          }
+        }
+      }
+    }
   }
 
-  def insertEmptyIndex(data: Seq[(K, V)]): (Boolean, Int) = {
-    val p = new DataBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], DATA_MIN, DATA_MAX)
+  def find(k: K): Future[Option[Partition[T, K, V]]] = {
+    root match {
+      case None => Future.successful(None)
+      case Some(id) =>
+
+        ctx.parents += id -> (None, 0)
+
+        find(k,root)
+    }
+  }
+
+  def insertEmptyIndex(data: Seq[(K, V)]): Future[(Boolean, Int)] = {
+    val p = ctx.createPartition()
 
     val (ok, n) = p.insert(data)
-    ctx.parents += p -> (None, 0)
+    ctx.parents += p.id -> (None, 0)
 
-    (ok && recursiveCopy(p)) -> n
+    if(!ok) return Future.successful(false -> 0)
+
+    recursiveCopy(p).map(_ -> n)
   }
 
-  def insertParent(left: MetaBlock[T, K, V], prev: Block[T, K, V]): Boolean = {
+  def insertParent(left: MetaBlock[T, K, V], prev: Block[T, K, V]): Future[Boolean] = {
     if(left.isFull()){
-      val right = left.split()
+      val right = ctx.split(left)
 
       if(ord.gt(prev.max.get, left.max.get)){
-        right.insert(prev.max.get, prev)
+        right.insert(prev.max.get, prev.id)
       } else {
-        left.insert(prev.max.get, prev)
+        left.insert(prev.max.get, prev.id)
       }
 
       return handleParent(left, right)
     }
 
-    left.insert(prev.max.get, prev)
+    left.insert(prev.max.get, prev.id)
 
     recursiveCopy(left)
   }
 
-  def handleParent(left: Block[T, K, V], right: Block[T, K, V]): Boolean = {
-    val (parent, pos) = ctx.parents(left)
+  def handleParent(left: Block[T, K, V], right: Block[T, K, V]): Future[Boolean] = {
+    val (parent, pos) = ctx.parents(left.id)
 
     parent match {
       case None =>
 
-        val meta = new MetaBlock[T, K, V](UUID.randomUUID.toString.asInstanceOf[T], META_MIN, META_MAX)
+        val meta = ctx.createMeta()
 
-        ctx.parents += meta -> (None, 0)
+        ctx.parents += meta.id -> (None, 0)
 
         meta.insert(Seq(
-          left.max.get -> left,
-          right.max.get -> right
+          left.max.get -> left.id,
+          right.max.get -> right.id
         ))
 
         recursiveCopy(meta)
 
-      case Some(parent) =>
+      case Some(id) => ctx.getMeta(id).flatMap { opt =>
+        opt match {
+          case None => Future.successful(false)
+          case Some(parent) =>
 
-        val PARENT = parent.copy()
-        PARENT.setChild(left.max.get, left, pos)
+            val PARENT = ctx.copy(parent)
+            PARENT.setChild(left.max.get, left.id, pos)
 
-        insertParent(PARENT, right)
+            insertParent(PARENT, right)
+        }
+      }
     }
   }
 
-  def insertLeaf(leaf: Partition[T, K, V], data: Seq[(K, V)]): (Boolean, Int) = {
-    val left = copyPartition(leaf)
+  def insertLeaf(leaf: Partition[T, K, V], data: Seq[(K, V)]): Future[(Boolean, Int)] = {
+    val left = ctx.copy(leaf)
 
-    if(leaf.isFull()){
-      val right = left.split()
-      return handleParent(left, right) -> 0
+    if(left.isFull()){
+      val right = ctx.split(left)
+      return handleParent(left, right).map(_ -> 0)
     }
 
     val (ok, n) = left.insert(data)
 
-    (ok && recursiveCopy(left)) -> n
+    if(!ok) return Future.successful(false -> 0)
+
+    recursiveCopy(left).map(_ -> n)
   }
 
-  def insert(data: Seq[(K, V)]): (Boolean, Int) = {
+  def insert(data: Seq[(K, V)]): Future[(Boolean, Int)] = {
 
     val sorted = data.sortBy(_._1)
     val size = sorted.length
     var pos = 0
 
-    while(pos < size){
+    def insert(): Future[(Boolean, Int)] = {
+      if(pos == size) return Future.successful(true -> 0)
 
       var list = sorted.slice(pos, size)
       val (k, _) = list(0)
 
-      val (ok, n) = find(k) match {
-        case None => insertEmptyIndex(list)
-        case Some(leaf) =>
+      find(k).flatMap {
+        _ match {
+          case None => insertEmptyIndex(list)
+          case Some(leaf) =>
 
-          val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
-          if(idx > 0) list = list.slice(0, idx)
+            val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
+            if(idx > 0) list = list.slice(0, idx)
 
-          insertLeaf(leaf, list)
+            insertLeaf(leaf, list)
+        }
+      }.flatMap { case (ok, n) =>
+        if(!ok) {
+          Future.successful(false -> 0)
+        } else {
+          pos += n
+          insert()
+        }
       }
-
-      if(!ok) return false -> 0
-
-      pos += n
     }
 
-    this.size += size
+    insert().map { case (ok, _) =>
+      if(ok){
+        this.size += size
+      }
 
-    println(s"inserting ${data.map(_._1)}...\n")
-
-    true -> size
+      ok -> size
+    }
   }
 
-  def copyPartition(p: Partition[T, K, V]): Partition[T, K, V] = {
+  /*def copyPartition(p: Partition[T, K, V]): Partition[T, K, V] = {
     if(ctx.blocks.isDefinedAt(p)) return p
 
     val copy = p.copy()
@@ -191,9 +213,9 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V],
     ctx.parents += copy -> ctx.parents(p)
 
     copy
-  }
+  }*/
 
-  def update(data: Seq[(K, V)]): (Boolean, Int) = {
+  /*def update(data: Seq[(K, V)]): (Boolean, Int) = {
 
     val sorted = data.sortBy(_._1)
     val size = sorted.length
@@ -227,6 +249,6 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V],
     // println(s"updating ${data}...\n")
 
     true -> size
-  }
+  }*/
 
 }
