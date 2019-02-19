@@ -39,16 +39,16 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
     true
   }
 
-  def left[S <: Block[T, K, V]](pos: Int): Option[S] = {
+  def left(pos: Int): Option[T] = {
     val lpos = pos - 1
     if(lpos < 0) return None
-    Some(pointers(lpos)._2.asInstanceOf[S])
+    Some(pointers(lpos)._2)
   }
 
-  def right[S <: Block[T, K, V]](pos: Int): Option[S] = {
+  def right(pos: Int): Option[T] = {
     val rpos = pos + 1
     if(rpos >= size) return None
-    Some(pointers(rpos)._2.asInstanceOf[S])
+    Some(pointers(rpos)._2)
   }
 
   def insertAt(k: K, child: T, idx: Int)(implicit ctx: TxContext[T, K, V]): (Boolean, Int) = {
@@ -180,6 +180,63 @@ class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
   override def max: Option[K] = {
     if(isEmpty()) return None
     Some(pointers(size - 1)._1)
+  }
+
+  def slice(from: Int, n: Int)(implicit ctx: TxContext[T, K, V]): Seq[(K, T)] = {
+    var slice = Seq.empty[(K, T)]
+
+    val len = from + n
+
+    for(i<-from until len){
+      slice = slice :+ pointers(i)
+    }
+
+    for(i<-(from + n) until size){
+      val (k, child) = pointers(i)
+      setChild(k, child, i - n)
+    }
+
+    size -= n
+
+    slice
+  }
+
+  def canBorrowTo(target: MetaBlock[T, K, V]): Boolean = {
+    val n = MIN - target.size
+    size - MIN >= n
+  }
+
+  def borrowRightTo(target: MetaBlock[T, K, V])(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
+    val n = MIN - target.size
+
+    val list = slice(0, n)
+    target.insert(list)
+
+    target
+  }
+
+  def borrowLeftTo(target: MetaBlock[T, K, V])(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
+    val n = MIN - target.size
+
+    val list = slice(size - n, n)
+    target.insert(list)
+
+    target
+  }
+
+  def merge(right: MetaBlock[T, K, V])(implicit ctx: TxContext[T, K, V]): MetaBlock[T, K, V] = {
+    val len = right.size
+    var j = size
+
+    for(i<-0 until len){
+      val (k, child) = right.pointers(i)
+      setChild(k, child, j)
+
+      size += 1
+      j += 1
+    }
+
+    this
   }
 
   override def isFull(): Boolean = size == MAX

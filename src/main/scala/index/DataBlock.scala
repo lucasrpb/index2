@@ -164,6 +164,50 @@ class DataBlock[T: ClassTag, K: ClassTag, V: ClassTag](override val id: T,
     Some(keys(size - 1)._1)
   }
 
+  override def canBorrowTo(t: Partition[T, K, V]): Boolean = {
+    val target = t.asInstanceOf[DataBlock[T, K, V]]
+
+    val n = MIN - target.size
+    size - MIN >= n
+  }
+
+  override def borrowRightTo(t: Partition[T, K, V]): DataBlock[T, K, V] = {
+    val target = t.asInstanceOf[DataBlock[T, K, V]]
+
+    val n = MIN - target.size
+
+    val list = slice(0, n)
+    target.insert(list)
+
+    target
+  }
+
+  override def borrowLeftTo(t: Partition[T, K, V]): DataBlock[T, K, V] = {
+    val target = t.asInstanceOf[DataBlock[T, K, V]]
+
+    val n = MIN - target.size
+
+    val list = slice(size - n, n)
+    target.insert(list)
+
+    target
+  }
+
+  override def merge(r: Partition[T, K, V]): DataBlock[T, K, V] = {
+    val right = r.asInstanceOf[DataBlock[T, K, V]]
+
+    val len = right.size
+    var j = size
+
+    for(i<-0 until len){
+      keys(j) = right.keys(i)
+      size += 1
+      j += 1
+    }
+
+    this
+  }
+
   override def isFull(): Boolean = size == MAX
   override def isEmpty(): Boolean = size == 0
   override def hasMinimumKeys(): Boolean = size >= MIN

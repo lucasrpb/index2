@@ -93,6 +93,29 @@ class MainSpec extends FlatSpec {
       }
     }
 
+    def remove(): Future[(Int, Boolean, Seq[(Int, Int)])] = {
+
+      implicit val ctx = new MemoryContext[String, Int, Int](DATA_ORDER, META_ORDER, store)
+      val old = root.get()
+      val data = QueryAPI.inOrder(old.root)
+      val index = new Index[String, Int, Int](old)
+
+      if(data.length < 2) return Future.successful(Tuple3(0, false, null))
+
+      val len = rand.nextInt(1, data.length)
+      val list = scala.util.Random.shuffle(data).slice(0, len)
+
+      index.remove(list.map(_._1)).flatMap { case (ok, _) =>
+        if(!ok){
+          Future.successful(Tuple3(0, false, null))
+        } else {
+          store.save(ctx.blocks).map { ok =>
+            Tuple3(0, (ok && root.compareAndSet(old, index.ref)), list)
+          }
+        }
+      }
+    }
+
     val n = rand.nextInt(4, 10)
 
     var tasks = Seq.empty[Future[(Int, Boolean, Seq[(Int, Int)])]]
@@ -101,7 +124,10 @@ class MainSpec extends FlatSpec {
       tasks = tasks :+ (
         rand.nextBoolean() match {
           case true => insert()
-          case false => update()
+          case false => rand.nextBoolean() match {
+            case true => update()
+            case false => remove()
+          }
         }
       )
     }
@@ -111,8 +137,13 @@ class MainSpec extends FlatSpec {
 
     var data = Seq.empty[(Int, Int)]
 
-    results_ok.foreach { case (op, ok, list) =>
+    results_ok.foreach { case (op, _, list) =>
       op match {
+        case 0 =>
+
+          println(s"removal: ${list}\n")
+
+          data = data.filterNot{case (k, _) => list.exists(_._1 == k)}
         case 1 => data = data ++ list
         case 2 =>
           data = data.filterNot{case (k, _) => list.exists(_._1 == k)}
