@@ -18,7 +18,7 @@ class MainSpec extends FlatSpec {
     override def compare(x: Int, y: Int): Int =  x - y
   }
 
-  val MAX_VALUE = 1000//Int.MaxValue
+  val MAX_VALUE = Int.MaxValue
 
   def test(): Unit = {
 
@@ -26,8 +26,8 @@ class MainSpec extends FlatSpec {
 
     val rand = ThreadLocalRandom.current()
 
-    val DATA_ORDER = 4//rand.nextInt(4, 10)
-    val META_ORDER = 4//rand.nextInt(4, 10)
+    val DATA_ORDER = rand.nextInt(4, 10)
+    val META_ORDER = rand.nextInt(4, 10)
 
     val DATA_MIN = DATA_ORDER - 1
     val DATA_MAX = DATA_ORDER*2 - 1
@@ -38,7 +38,7 @@ class MainSpec extends FlatSpec {
     implicit val store = new MemoryStorage[String, Int, Int]()
     val root = new AtomicReference[IndexRef[String, Int, Int]](IndexRef(UUID.randomUUID.toString))
 
-    def insert(): Future[(Boolean, Seq[(Int, Int)])] = {
+    def insert(): Future[(Int, Boolean, Seq[(Int, Int)])] = {
 
       implicit val ctx = new MemoryContext[String, Int, Int](DATA_ORDER, META_ORDER, store)
       val old = root.get()
@@ -51,18 +51,41 @@ class MainSpec extends FlatSpec {
       for(i<-0 until n){
         val k = rand.nextInt(0, MAX_VALUE)
 
-        if(!list.exists(_._1 == k)){
+       // if(!list.exists(_._1 == k)){
           list = list :+ k -> k
-        }
+       // }
       }
 
       index.insert(list).flatMap { case (ok, _) =>
 
         if(!ok){
-          Future.successful(false -> null)
+          Future.successful(Tuple3(1, false, null))
         } else {
           store.save(ctx.blocks).map { ok =>
-            (ok && root.compareAndSet(old, index.ref)) -> list
+            Tuple3(1, (ok && root.compareAndSet(old, index.ref)), list)
+          }
+        }
+      }
+    }
+
+    def update(): Future[(Int, Boolean, Seq[(Int, Int)])] = {
+
+      implicit val ctx = new MemoryContext[String, Int, Int](DATA_ORDER, META_ORDER, store)
+      val old = root.get()
+      val data = QueryAPI.inOrder(old.root)
+      val index = new Index[String, Int, Int](old)
+
+      if(data.length < 2) return Future.successful(Tuple3(1, false, null))
+
+      val len = rand.nextInt(1, data.length)
+      val list = scala.util.Random.shuffle(data).slice(0, len).map{case (k, _) => k -> rand.nextInt(0, MAX_VALUE)}
+
+      index.update(list).flatMap { case (ok, _) =>
+        if(!ok){
+          Future.successful(Tuple3(2, false, null))
+        } else {
+          store.save(ctx.blocks).map { ok =>
+            Tuple3(2, (ok && root.compareAndSet(old, index.ref)), list)
           }
         }
       }
@@ -70,16 +93,30 @@ class MainSpec extends FlatSpec {
 
     val n = rand.nextInt(4, 10)
 
-    var tasks = Seq.empty[Future[(Boolean, Seq[(Int, Int)])]]
+    var tasks = Seq.empty[Future[(Int, Boolean, Seq[(Int, Int)])]]
 
     for(i<-0 until n){
-      tasks = tasks :+ insert()
+      tasks = tasks :+ (
+        rand.nextBoolean() match {
+          case true => insert()
+          case false => update()
+        }
+      )
     }
 
     val result = Await.result(Future.sequence(tasks), 1 minute)
-    val results_ok = result.filter(_._1).map(_._2)
+    val results_ok = result.filter(_._2)
 
-    val data = results_ok.foldLeft(Seq.empty[(Int, Int)]){ case (p, n) => p ++ n}
+    var data = Seq.empty[(Int, Int)]
+
+    results_ok.foreach { case (op, ok, list) =>
+      op match {
+        case 1 => data = data ++ list
+        case 2 =>
+          data = data.filterNot{case (k, _) => list.exists(_._1 == k)}
+          data = data ++ list
+      }
+    }
 
     val dsorted = data.sorted
     val ref = root.get()

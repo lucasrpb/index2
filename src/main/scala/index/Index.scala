@@ -191,7 +191,7 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
         }
       }.flatMap { case (ok, n) =>
         if(!ok) {
-          Future.successful(false -> 0)
+          Future.successful(ok -> n)
         } else {
           pos += n
           insert()
@@ -219,40 +219,51 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     copy
   }*/
 
-  /*def update(data: Seq[(K, V)]): (Boolean, Int) = {
+  def update(data: Seq[(K, V)]): Future[(Boolean, Int)] = {
 
     val sorted = data.sortBy(_._1)
     val size = sorted.length
     var pos = 0
 
-    while(pos < size){
+    def update(): Future[(Boolean, Int)] = {
+
+      if(pos == size) return Future.successful(true -> 0)
 
       var list = sorted.slice(pos, size)
       val (k, _) = list(0)
 
-      val (ok, n) = find(k) match {
-        case None => false -> 0
-        case Some(leaf) =>
+      find(k).flatMap {
+        _ match {
+          case None => Future.successful(false -> 0)
+          case Some(leaf) =>
 
-          val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
-          if(idx > 0) list = list.slice(0, idx)
+            val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
+            if(idx > 0) list = list.slice(0, idx)
 
-          val left = copyPartition(leaf)
+            val left = ctx.copy(leaf)
 
-          left.update(list) match {
-            case (true, count) => recursiveCopy(left) -> count
-            case _ => false -> 0
-          }
+            left.update(list) match {
+              case (true, count) => recursiveCopy(left).map(_ -> count)
+              case _ => Future.successful(false -> 0)
+            }
+        }
+      }.flatMap { case (ok, n) =>
+        if(!ok) {
+          Future.successful(ok -> n)
+        } else {
+          pos += n
+          update()
+        }
       }
-
-      if(!ok) return false -> 0
-
-      pos += n
     }
 
-    // println(s"updating ${data}...\n")
+    update().map { case (ok, _) =>
+      if(ok){
+        this.size += size
+      }
 
-    true -> size
-  }*/
+      ok -> size
+    }
+  }
 
 }
