@@ -61,6 +61,8 @@ class MainSpec extends FlatSpec {
         if(!ok){
           Future.successful(Tuple3(1, false, null))
         } else {
+
+          //We must save first before updating the ref...
           store.save(ctx.blocks).map { ok =>
             Tuple3(1, (ok && root.compareAndSet(old, index.ref)), list)
           }
