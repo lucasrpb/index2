@@ -52,18 +52,14 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     }
   }
 
-  def find(k: K, start: Option[T]): Future[Option[Partition[T, K, V]]] = {
+  def find(k: K, start: Option[T]): Future[(Boolean, Option[Partition[T, K, V]])] = {
     start match {
-      case None => Future.successful(None)
+      case None => Future.successful(false -> None)
       case Some(id) => ctx.getBlock(id).flatMap { opt =>
         opt match {
-          case None =>
-
-            println(s"something went horribly wrong!\n\n")
-
-            Future.successful(None)
+          case None => Future.successful(false -> None)
           case Some(start) => start match {
-            case leaf: Partition[T, K, V] => Future.successful(Some(leaf))
+            case leaf: Partition[T, K, V] => Future.successful(true -> Some(leaf))
             case meta: MetaBlock[T, K, V] =>
 
               val size = meta.size
@@ -81,9 +77,9 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     }
   }
 
-  def find(k: K): Future[Option[Partition[T, K, V]]] = {
+  def find(k: K): Future[(Boolean, Option[Partition[T, K, V]])] = {
     root match {
-      case None => Future.successful(None)
+      case None => Future.successful(true -> None)
       case Some(id) =>
 
         ctx.parents += id -> (None, 0)
@@ -181,13 +177,15 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
 
       find(k).flatMap {
         _ match {
-          case None => insertEmptyIndex(list)
-          case Some(leaf) =>
+          case (true, None) => insertEmptyIndex(list)
+          case (true, Some(leaf)) =>
 
             val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
             if(idx > 0) list = list.slice(0, idx)
 
             insertLeaf(leaf, list)
+
+          case _ => Future.successful(false -> 0)
         }
       }.flatMap { case (ok, n) =>
         if(!ok) {
@@ -234,8 +232,7 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
 
       find(k).flatMap {
         _ match {
-          case None => Future.successful(false -> 0)
-          case Some(leaf) =>
+          case (true, Some(leaf)) =>
 
             val idx = list.indexWhere {case (k, _) => ord.gt(k, leaf.max.get)}
             if(idx > 0) list = list.slice(0, idx)
@@ -246,6 +243,8 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
               case (true, count) => recursiveCopy(left).map(_ -> count)
               case _ => Future.successful(false -> 0)
             }
+
+          case _ => Future.successful(false -> 0)
         }
       }.flatMap { case (ok, n) =>
         if(!ok) {
