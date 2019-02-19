@@ -141,7 +141,7 @@ class MainSpec extends FlatSpec {
       op match {
         case 0 =>
 
-          println(s"removal: ${list}\n")
+          //println(s"removed: ${list.map(_._1)}\n")
 
           data = data.filterNot{case (k, _) => list.exists(_._1 == k)}
         case 1 => data = data ++ list

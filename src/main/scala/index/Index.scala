@@ -291,7 +291,9 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     ctx.getMeta(gopt.get).flatMap {
       _ match {
         case None => Future.successful(false)
-        case Some(gparent) => borrow(parent, gparent, gpos)
+        case Some(gp) =>
+          val gparent = ctx.copy(gp)
+          borrow(parent, gparent, gpos)
       }
     }
   }
@@ -318,8 +320,7 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     tasks = tasks :+ (if(lopt.isEmpty) Future.successful(None) else ctx.getBlock(lopt.get))
     tasks = tasks :+ (if(ropt.isEmpty) Future.successful(None) else ctx.getBlock(ropt.get))
 
-    Future.sequence(tasks)
-      .flatMap { siblings =>
+    Future.sequence(tasks).flatMap { siblings =>
 
         val lopt = siblings(0).map(b => ctx.copy(b.asInstanceOf[MetaBlock[T, K, V]]))
         val ropt = siblings(1).map(b => ctx.copy(b.asInstanceOf[MetaBlock[T, K, V]]))
@@ -397,7 +398,9 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     ctx.getMeta(gopt.get).flatMap {
       _ match {
         case None => Future.successful(false)
-        case Some(gparent) => borrow(parent, gparent, gpos)
+        case Some(gp) =>
+          val gparent = ctx.copy(gp)
+          borrow(parent, gparent, gpos)
       }
     }
   }
@@ -419,10 +422,12 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
         root = None
         //levels -= 1
         //num_data_blocks -= 1
-      } else {
-        ctx.parents += target.id -> (None, 0)
-        root = Some(target.id)
+
+        return Future.successful(true)
       }
+
+      ctx.parents += target.id -> (None, 0)
+      root = Some(target.id)
 
       return Future.successful(true)
     }
@@ -432,8 +437,7 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     tasks = tasks :+ (if(lopt.isEmpty) Future.successful(None) else ctx.getBlock(lopt.get))
     tasks = tasks :+ (if(ropt.isEmpty) Future.successful(None) else ctx.getBlock(ropt.get))
 
-    Future.sequence(tasks)
-      .flatMap { siblings =>
+    Future.sequence(tasks).flatMap { siblings =>
 
       val lopt = siblings(0).map(b => ctx.copy(b.asInstanceOf[Partition[T, K, V]]))
       val ropt = siblings(1).map(b => ctx.copy(b.asInstanceOf[Partition[T, K, V]]))
@@ -441,8 +445,6 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
       (lopt, ropt) match {
         case (None, None) => Future.successful(false)
         case (Some(left), _) if left.canBorrowTo(target) =>
-
-          val left = lopt.get
 
           left.borrowLeftTo(target)
 
@@ -454,8 +456,6 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
           recursiveCopy(parent)
 
         case (_, Some(right)) if right.canBorrowTo(target) =>
-
-          val right = ropt.get
 
           right.borrowRightTo(target)
 
@@ -504,7 +504,9 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
     ctx.getMeta(popt.get).flatMap {
       _ match {
         case None => Future.successful(false -> 0)
-        case Some(parent) => borrow(target, parent, pos).map(_ -> n)
+        case Some(p) =>
+          val parent = ctx.copy(p)
+          borrow(target, parent, pos).map(_ -> n)
       }
     }
   }

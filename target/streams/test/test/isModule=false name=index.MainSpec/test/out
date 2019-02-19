@@ -1,4 +1,3 @@
 [0m[[0m[0minfo[0m] [0m[0m[32mMainSpec:[0m[0m
 [0m[[0m[0minfo[0m] [0m[0m[32mindex data[0m[0m
-[0m[[0m[0minfo[0m] [0m[0m[31m- should be equal to test data *** FAILED ***[0m[0m
-[0m[[0m[0minfo[0m] [0m[0m[31m  dsorted.equals(isorted) was false (MainSpec.scala:163)[0m[0m
+[0m[[0m[0minfo[0m] [0m[0m[32m- should be equal to test data[0m[0m
