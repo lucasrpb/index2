@@ -264,5 +264,4 @@ class Index[T: ClassTag, K: ClassTag, V: ClassTag](var iref: IndexRef[T, K, V])
       ok -> size
     }
   }
-
 }
