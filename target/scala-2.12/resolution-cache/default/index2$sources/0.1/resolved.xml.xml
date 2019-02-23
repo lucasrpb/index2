@@ -4,7 +4,7 @@
 		module="index2$sources"
 		revision="0.1"
 		status="integration"
-		publication="20190222155743"
+		publication="20190223102424"
 	/>
 	<configurations>
 		<conf name="compile" visibility="public" description=""/>

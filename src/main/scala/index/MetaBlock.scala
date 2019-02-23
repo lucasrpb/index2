@@ -5,7 +5,10 @@ import scala.reflect.ClassTag
 
 class MetaBlock[T: ClassTag, K: ClassTag, V: ClassTag](val id: T,
                                                        val MIN: Int,
-                                                       val MAX: Int)(implicit ord: Ordering[K]) extends Block[T, K, V]{
+                                                       val MAX: Int)(implicit val ord: Ordering[K])
+  extends Block[T, K, V] with Serializable {
+
+  val serialVersionUID = 1L
 
   val MIDDLE = MIN
 

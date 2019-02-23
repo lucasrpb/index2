@@ -1,2 +1,4 @@
-[0m[[0m[33mwarn[0m] [0m[0mthere was one feature warning; re-run with -feature for details[0m
-[0m[[0m[33mwarn[0m] [0m[0mone warning found[0m
+[0m[[0m[31merror[0m] [0m[0m/Volumes/Users/lucasrpb/IdeaProjects/index2/src/test/scala/index/SerializerSpec.scala:80:47: value flip is not a member of Array[Byte][0m
+[0m[[0m[31merror[0m] [0m[0m    val o = DataBlockSerializer.deserialize(b.flip())[0m
+[0m[[0m[31merror[0m] [0m[0m                                              ^[0m
+[0m[[0m[31merror[0m] [0m[0mone error found[0m
